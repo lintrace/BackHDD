@@ -14,7 +14,6 @@ set -o errexit
 FILE_LIST="./filelist.lst"  # Список команд и директорий-источников для бэкапа
 DESTINATION=""              # Директория назначения (из файла)
 MODE="TAR"                  # Режим архивации (по умолчанию TAR без компрессии)
-FULL_BACKUP_PATH=""         # Полный путь для бэкапа
 UPD_ARCH="TRUE"             # Режим работы с архивами ZIP и 7Z (по умолчанию обновлять существующие)
 QUIET_MODE="OFF"            # Тихий режим работы с выводом минимума информации на экран
 ARCH_ON_SUBDIR="OFF"        # Режим создания архива на каждую поддиректорию в указанном источнике
@@ -131,10 +130,11 @@ $Bold$Under"ВНИМАНИЕ! Файл всегда должен заверша�
 #  СОЗДАТЬ АРХИВ С УЧЕТОМ НАСТРОЕК ВЫБРАННЫХ ПОЛЬЗОВАТЕЛЕМ
 #
 #  При вызове должно быть корректное состояние SRC_PATH (источник)
-#  и DESTINATION (папка назначения)
+#  и DESTINATION (полный путь к папке назначения)
 #
 ###############################################################################
 MakeArchiveBySrcPath() {
+    local FULL_BACKUP_PATH=""         # Полный путь для бэкапа
     # Проверяем корректность параметров
     if [[ "$DESTINATION" == "" ]]
         then
@@ -156,10 +156,16 @@ MakeArchiveBySrcPath() {
         then FULL_BACKUP_PATH="${DESTINATION:0:-1}$SRC_PATH"
         else FULL_BACKUP_PATH="$DESTINATION$/SRC_PATH"
     fi
+
+    # Выбрасываем из полного пути последнюю папку для режима архивации подпапок
+    if [[ "$ARCH_ON_SUBDIR" == "ON" ]]
+        then FULL_BACKUP_PATH=$(echo "${FULL_BACKUP_PATH%/?*}")
+    fi
+
     # Добавим слеш в конец пути при отсутствии
     if [[ ${FULL_BACKUP_PATH: -1} != "/" ]]
         then FULL_BACKUP_PATH="$FULL_BACKUP_PATH/"
-    fi
+    fi    
 
     # Попытка войти в целевую директорию для бэкапа, проверка ее существования и прав.
     if ! ( cd "$FULL_BACKUP_PATH" &>/dev/null )
@@ -177,42 +183,42 @@ MakeArchiveBySrcPath() {
     case $MODE in
         TAR|tar)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar")
-    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi
         ;; #------------------------------------------------------
         TZO|tzo)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar.lzo")
-    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --lzop --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --lzop --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi             
         ;; #------------------------------------------------------
         TGZ|tgz)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar.gz")
-    if cd "$SRC_PATH" && ( tar -czf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -czf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi
         ;; #------------------------------------------------------
         TBZ|tbz)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar.bz2")
-    if cd "$SRC_PATH" && ( tar -cjf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -cjf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi
         ;; #------------------------------------------------------
         TLZ|tlz)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar.lzma")
-    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --lzma --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -cf "$ARCH_NAME" --lzma --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi
         ;; #------------------------------------------------------
         TXZ|txz)
     ARCH_NAME=$(echo "$FULL_BACKUP_PATH$(basename "$SRC_PATH").tar.xz")
-    if cd "$SRC_PATH" && ( tar -cJf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null)
+    if cd "$SRC_PATH" && ( tar -cJf "$ARCH_NAME" --one-file-system --exclude-backups --ignore-failed-read . &>/dev/null )
         then PrintArchOK
     else PrintArchError
     fi             
@@ -262,7 +268,6 @@ MakeArchiveBySrcPath() {
         ;; #------------------------------------------------------
     esac
 }
-
 
 # < ТОЧКА ВХОДА
 
@@ -348,27 +353,27 @@ do
     fi
 
     ###########################################################################
-    # Проверка на осмысленные данные из файла, если начинается с '/', то создаем архив
-    if [[ ${LineFromList:0:1} == '/' ]]
-     then 
-        # Обычный режим - один архив на источник
-        if [[ "$ARCH_ON_SUBDIR" == "OFF" ]]; then
-            SRC_PATH="$LineFromList"
-            MakeArchiveBySrcPath
-        else
-            # Режим создания архива на каждую поддиректорию источника
-            # ВНИМАНИЕ! Скрытые директории не обрабатываются!!!
-            cd "$LineFromList"            
-            for SRC_PATH in *
-            do
-                if [ -d "$SRC_PATH" ] && ( [[ "$SRC_PATH" != "." ]] && [[ "$SRC_PATH" != ".." ]] )
-                    then
-                        SRC_PATH=$PWD/$SRC_PATH
-                        MakeArchiveBySrcPath
-                fi
-            done
-        fi
-    fi
+    # Проверка на осмысленные данные из файла, если не путь, то есть
+    # не начинается с '/', то переходим к следующей строке в файле
+    if [[ ${LineFromList:0:1} != '/' ]]; then continue; fi
+
+    # Обычный режим - один архив на источник
+    if [[ "$ARCH_ON_SUBDIR" == "OFF" ]]; then
+        SRC_PATH="$LineFromList"
+        MakeArchiveBySrcPath
+    else
+        # Режим создания архива на каждую поддиректорию источника
+        # ВНИМАНИЕ! Скрытые поддиректории не обрабатываются!!!
+        cd "$LineFromList"            
+        for SRC_PATH in *
+        do
+            if [ -d "$SRC_PATH" ] && ( [[ "$SRC_PATH" != "." ]] && [[ "$SRC_PATH" != ".." ]] )
+                then
+                    SRC_PATH=$PWD/$SRC_PATH
+                    MakeArchiveBySrcPath
+            fi
+        done
+    fi    
 done < "$FILE_LIST"
 
 ###############################################################################
